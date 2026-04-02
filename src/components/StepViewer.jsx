@@ -8,6 +8,7 @@ const stepBriefs = {
   "Step 1: Removed Useless Symbols": "Non-generating and unreachable symbols were identified and removed.",
   "Step 2: Eliminated ε Productions": "Nullable variables expanded into all combinations; ε-rules removed.",
   "Step 3: Removed Unit Productions": "Chain rules (A → B) replaced with direct non-unit productions.",
+  "Step 4: Final Cleanup": "Re-verified grammar; removed any newly useless symbols.",
 };
 
 // Detailed descriptions for each step
@@ -43,13 +44,23 @@ const stepDetailedExplanations = {
     ]
   },
   "Step 3: Removed Unit Productions": {
-    whatWeHave: "Final simplified grammar with no unit productions (A → B chains).",
+    whatWeHave: "Grammar with no unit productions (A → B chains).",
     whyWeDoIt: "Unit productions like A → B just rename variables without adding terminals. They create unnecessary chains and can be replaced by directly copying B's productions into A.",
     howItWorks: "1. Compute Unit Closures: For each variable A, find all variables B such that A ⇒* B through unit production chains.\n2. Replace Unit Productions: For each variable A, take the union of all non-unit productions from every variable in A's unit closure.\n3. Drop all unit rules: Remove every production of the form A → B where B is a single non-terminal.",
     keyTerms: [
       { term: "Unit Production", desc: "A rule A → B where B is a single non-terminal" },
       { term: "Unit Closure", desc: "All variables reachable from A through unit production chains" },
       { term: "Transitive Closure", desc: "Following chains: if A → B and B → C, then C is in A's closure" },
+    ]
+  },
+  "Step 4: Final Cleanup": {
+    whatWeHave: "Final simplified grammar with all useless symbols removed.",
+    whyWeDoIt: "After removing ε-productions and unit productions, some variables may have lost all their productions or become unreachable. A final pass ensures the grammar is fully clean.",
+    howItWorks: "We re-run the useless symbol removal algorithm (same as Step 1) on the grammar produced after unit production removal. This catches any variables that became non-generating or unreachable due to earlier transformations.",
+    keyTerms: [
+      { term: "Non-generating", desc: "A variable that can no longer derive any terminal string" },
+      { term: "Unreachable", desc: "A variable no longer referenced from the start symbol" },
+      { term: "Final Verification", desc: "Ensures no useless symbols remain in the simplified grammar" },
     ]
   },
 };

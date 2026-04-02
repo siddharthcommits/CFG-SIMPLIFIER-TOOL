@@ -4,27 +4,40 @@
  */
 
 /**
- * Step 1: Remove Useless Symbols
- * 1. Remove non-generating symbols.
- * 2. Remove unreachable symbols.
+ * Helper: Check if a character is a non-terminal (uppercase letter A-Z).
+ * This is the single source of truth for terminal vs non-terminal distinction.
+ * Using this instead of checking grammar keys prevents the bug where
+ * uppercase letters without productions (e.g., B with no rules) are
+ * mistakenly treated as terminals.
+ */
+function isNonTerminal(char) {
+  return /^[A-Z]$/.test(char);
+}
+
+/**
+ * Step 1 & 4: Remove Useless Symbols
+ * 1. Remove non-generating symbols (variables that cannot derive a terminal string).
+ * 2. Remove unreachable symbols (variables not reachable from the start symbol).
  */
 export function removeUselessSymbols(grammar, startSymbol = 'S') {
   // 1. Identify Generating Symbols
+  // A variable is generating if it can derive a string of terminals.
+  // Base case: A -> w where w contains only terminals (or is ε).
+  // Inductive: A -> X1X2...Xn where each Xi is terminal or generating.
   const generating = new Set();
-  
-  // Base case: A -> w where w is all terminals
+
   let changed = true;
   while (changed) {
     changed = false;
     for (const v in grammar) {
       if (generating.has(v)) continue;
       for (const prod of grammar[v]) {
-        // A production is generating if all its symbols are terminals or generating variables
-        const isGenerating = Array.from(prod).every(char => {
-          const isTerminal = !grammar[char]; // If it's not in grammar keys, it's a terminal or epsilon
-          return isTerminal || generating.has(char);
+        // Empty production (ε) is vacuously generating
+        const isGen = Array.from(prod).every(char => {
+          if (!isNonTerminal(char)) return true; // terminals are always fine
+          return generating.has(char);            // non-terminals must be generating
         });
-        if (isGenerating) {
+        if (isGen) {
           generating.add(v);
           changed = true;
           break;
@@ -33,29 +46,35 @@ export function removeUselessSymbols(grammar, startSymbol = 'S') {
     }
   }
 
-  // Remove non-generating variables and their productions
-  let grammarGenerating = {};
+  // Remove non-generating variables and any production that references
+  // a non-generating non-terminal
+  const grammarGenerating = {};
   for (const v in grammar) {
-    if (generating.has(v)) {
-      const validProds = grammar[v].filter(prod => {
-        return Array.from(prod).every(char => !grammar[char] || generating.has(char));
+    if (!generating.has(v)) continue;
+    const validProds = grammar[v].filter(prod => {
+      return Array.from(prod).every(char => {
+        if (!isNonTerminal(char)) return true; // terminals are fine
+        return generating.has(char);            // non-terminals must be generating
       });
-      if (validProds.length > 0) {
-        grammarGenerating[v] = validProds;
-      }
+    });
+    if (validProds.length > 0) {
+      grammarGenerating[v] = validProds;
     }
   }
 
-  // 2. Identify Reachable Symbols
-  const reachable = new Set([startSymbol]);
-  const queue = [startSymbol];
-  
+  // 2. Identify Reachable Symbols from start symbol via BFS
+  const reachable = new Set();
+  if (grammarGenerating[startSymbol]) {
+    reachable.add(startSymbol);
+  }
+  const queue = [...reachable];
+
   while (queue.length > 0) {
     const v = queue.shift();
     if (!grammarGenerating[v]) continue;
     for (const prod of grammarGenerating[v]) {
       for (const char of prod) {
-        if (grammarGenerating[char] && !reachable.has(char)) {
+        if (isNonTerminal(char) && grammarGenerating[char] && !reachable.has(char)) {
           reachable.add(char);
           queue.push(char);
         }
@@ -63,7 +82,7 @@ export function removeUselessSymbols(grammar, startSymbol = 'S') {
     }
   }
 
-  // Final Grammar: keep only reachable variables
+  // Final Grammar: keep only reachable, generating variables
   const result = {};
   for (const v in grammarGenerating) {
     if (reachable.has(v)) {
@@ -76,6 +95,9 @@ export function removeUselessSymbols(grammar, startSymbol = 'S') {
 
 /**
  * Step 2: Remove Null (ε) Productions
+ * 1. Find all nullable variables.
+ * 2. For each production, generate all combinations by optionally omitting nullable symbols.
+ * 3. Remove all ε-rules (except possibly for the start symbol).
  */
 export function removeNullProductions(grammar, startSymbol = 'S') {
   // 1. Find Nullable Variables (A =>* ε)
@@ -86,7 +108,7 @@ export function removeNullProductions(grammar, startSymbol = 'S') {
     for (const v in grammar) {
       if (nullable.has(v)) continue;
       for (const prod of grammar[v]) {
-        // A variable is nullable if its production is ε OR all its symbols are nullable
+        // A variable is nullable if it has ε production OR all symbols in some production are nullable
         if (prod === '' || Array.from(prod).every(char => nullable.has(char))) {
           nullable.add(v);
           changed = true;
@@ -102,8 +124,8 @@ export function removeNullProductions(grammar, startSymbol = 'S') {
   for (const v in grammar) {
     const newProds = new Set();
     for (const prod of grammar[v]) {
-      if (prod === '') continue; // Skip ε
-      
+      if (prod === '') continue; // Skip ε productions
+
       const combinations = generateNullableCombinations(prod, nullable);
       combinations.forEach(p => {
         if (p !== '') { // Don't add ε yet
@@ -116,11 +138,8 @@ export function removeNullProductions(grammar, startSymbol = 'S') {
     }
   }
 
-  // Handle case where start symbol becomes nullable
+  // If start symbol is nullable, add ε to its productions
   if (nullable.has(startSymbol)) {
-    // If S is nullable, we formally should add S' -> S | ε
-    // But for simplification, we just add '' to S if it was original S
-    // Wait, the prompt says "Remove ε productions except start symbol (if needed)"
     if (result[startSymbol]) {
       result[startSymbol].push('');
     } else {
@@ -131,33 +150,48 @@ export function removeNullProductions(grammar, startSymbol = 'S') {
   return result;
 }
 
+/**
+ * Generate all combinations of a production by optionally omitting nullable symbols.
+ * E.g., for prod="AB" with A nullable: returns ["AB", "B"]
+ */
 function generateNullableCombinations(prod, nullableSet) {
   const results = [''];
-  
+
   for (const char of prod) {
     const count = results.length;
     for (let i = 0; i < count; i++) {
       const current = results[i];
-      // Append char to existing combinations
+      // Append char to existing combination
       results[i] = current + char;
-      // If char is nullable, we also add the combination without this char
+      // If char is nullable, also keep the combination without this char
       if (nullableSet.has(char)) {
         results.push(current);
       }
     }
   }
-  
+
   return [...new Set(results)];
 }
 
 /**
- * Step 3: Remove Unit Productions (A -> B)
+ * Step 3: Remove Unit Productions (A -> B where B is a single non-terminal)
+ * 1. Compute unit closures for each variable.
+ * 2. Replace unit productions with the non-unit productions from the closure.
  */
 export function removeUnitProductions(grammar) {
-  const variables = Object.keys(grammar);
-  const unitClosures = {};
+  // Collect all variables, including those only on RHS
+  const variables = new Set(Object.keys(grammar));
+  for (const v in grammar) {
+    for (const prod of grammar[v]) {
+      for (const char of prod) {
+        if (isNonTerminal(char)) {
+          variables.add(char);
+        }
+      }
+    }
+  }
 
-  // Initialize closures
+  const unitClosures = {};
   variables.forEach(v => {
     unitClosures[v] = new Set([v]);
   });
@@ -168,8 +202,9 @@ export function removeUnitProductions(grammar) {
     changed = false;
     for (const v in grammar) {
       for (const prod of grammar[v]) {
-        // Is it a unit production? (Single non-terminal)
-        if (prod.length === 1 && grammar[prod]) {
+        // A unit production is a single non-terminal character
+        // Must also exist in grammar (i.e., have its own closure) to follow the chain
+        if (prod.length === 1 && isNonTerminal(prod) && unitClosures[prod]) {
           const target = prod;
           const oldSize = unitClosures[v].size;
           unitClosures[target].forEach(u => unitClosures[v].add(u));
@@ -181,15 +216,16 @@ export function removeUnitProductions(grammar) {
     }
   }
 
+  // Build new grammar: for each variable, collect all non-unit productions
+  // from every variable in its unit closure
   const result = {};
-  for (const v of variables) {
+  for (const v of Object.keys(grammar)) {
     const newProds = new Set();
-    // For each variable in closure of v
     unitClosures[v].forEach(u => {
-      // Add all non-unit productions of u to v
       if (grammar[u]) {
         grammar[u].forEach(prod => {
-          const isUnit = prod.length === 1 && grammar[prod];
+          // Filter out unit productions (a single non-terminal)
+          const isUnit = prod.length === 1 && isNonTerminal(prod);
           if (!isUnit) {
             newProds.add(prod);
           }
@@ -205,7 +241,7 @@ export function removeUnitProductions(grammar) {
 }
 
 /**
- * Main function to get all steps
+ * Main function: returns all simplification steps for the UI.
  */
 export function getSimplificationSteps(initialGrammar) {
   const steps = [];
@@ -214,32 +250,45 @@ export function getSimplificationSteps(initialGrammar) {
   steps.push({
     title: "Step 0: Original Grammar",
     grammar: initialGrammar,
-    description: "The initial context-free grammar from input."
+    description: "The initial context-free grammar from input.",
   });
 
-  // Step 1: No Useless
+  // Step 1: Remove Useless Symbols (non-generating + unreachable)
   const noUseless = removeUselessSymbols(initialGrammar);
   steps.push({
     title: "Step 1: Removed Useless Symbols",
     grammar: noUseless,
-    description: "Eliminated variables that do not generate terminals or are unreachable from the start symbol 'S'."
+    description: "Eliminated variables that do not generate terminals or are unreachable from the start symbol 'S'.",
   });
 
-  // Step 2: No Null
+  // Step 2: Remove Null (ε) Productions
   const noNull = removeNullProductions(noUseless);
   steps.push({
     title: "Step 2: Eliminated ε Productions",
     grammar: noNull,
-    description: "Replaced nullable variables in all productions and removed ε-rules."
+    description: "Replaced nullable variables in all productions and removed ε-rules.",
   });
 
-  // Step 3: No Unit
+  // Step 3: Remove Unit Productions
   const noUnit = removeUnitProductions(noNull);
   steps.push({
     title: "Step 3: Removed Unit Productions",
     grammar: noUnit,
-    description: "Eliminated chain rules of the form A → B using the unit closure."
+    description: "Eliminated chain rules of the form A → B using the unit closure.",
   });
+
+  // Step 4: Final Cleanup — remove any symbols that became useless
+  // after null/unit removal (e.g., a variable whose only production
+  // was removed, or a variable that is no longer reachable)
+  const finalGrammar = removeUselessSymbols(noUnit);
+  const hasChanges = JSON.stringify(finalGrammar) !== JSON.stringify(noUnit);
+  if (hasChanges) {
+    steps.push({
+      title: "Step 4: Final Cleanup",
+      grammar: finalGrammar,
+      description: "Removed symbols that became useless after previous transformations.",
+    });
+  }
 
   return steps;
 }

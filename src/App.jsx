@@ -99,13 +99,14 @@ function App() {
       <header className="fixed top-0 left-0 right-0 h-16 bg-white/80 backdrop-blur-2xl border-b border-neutral-200/60 z-50 px-6 flex justify-between items-center shadow-[0_1px_20px_rgba(0,0,0,0.04)]">
         <div className="flex items-center gap-3">
 
-          <motion.div 
+          {/* <motion.div 
             animate={{ scale: [1, 1.05, 1] }}
             transition={{ duration: 2, repeat: Infinity }}
             className="p-2 bg-neutral-900 rounded-xl shadow-lg shadow-neutral-400/30"
           >
              <Wand2 className="w-5 h-5 text-white" />
-          </motion.div> 
+          </motion.div>  */}
+          <img src="https://cdn-icons-png.flaticon.com/512/29/29563.png" alt="icon" className="w-10 h-10 p-1 bg-neutral-300 rounded-xl shadow-lg shadow-neutral-400/30" />
           <div>
             <h1 className="text-xl font-black italic tracking-tighter bg-clip-text text-transparent bg-gradient-to-r from-neutral-900 to-neutral-600">
               CFG SIMPLIFIER

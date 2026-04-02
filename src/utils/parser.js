@@ -19,17 +19,19 @@ export function parseGrammar(text) {
       const variable = parts[0].trim();
       const rhsPart = parts.slice(2).join('').trim();
       
-      if (/^[A-Z]$/.test(variable)) {
-        let rhs = rhsPart.split('|').map(p => p.trim());
-        
-        // Replace epsilon symbols
-        rhs = rhs.map(p => (p === 'ε' || p.toLowerCase() === 'epsilon' || p === 'e') ? '' : p);
-
-        if (!grammar[variable]) {
-          grammar[variable] = [];
-        }
-        grammar[variable].push(...rhs);
+      if (!/^[A-Z]$/.test(variable)) {
+        throw new Error(`Invalid non-terminal "${variable}" on left side. Only single uppercase letters (A-Z) are allowed.`);
       }
+      
+      let rhs = rhsPart.split('|').map(p => p.trim());
+      
+      // Replace epsilon symbols
+      rhs = rhs.map(p => (p === 'ε' || p.toLowerCase() === 'epsilon' || p === 'e') ? '' : p);
+
+      if (!grammar[variable]) {
+        grammar[variable] = [];
+      }
+      grammar[variable].push(...rhs);
     }
   }
 

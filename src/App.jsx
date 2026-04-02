@@ -29,7 +29,7 @@ function App() {
       setCurrentStep(0);
     } catch (error) {
       console.error(error);
-      alert("Error parsing grammar. Ensure rules are like: S -> a | AB");
+      alert(error.message || "Error parsing grammar. Ensure rules are like: S -> a | AB");
     }
   }, []);
 
